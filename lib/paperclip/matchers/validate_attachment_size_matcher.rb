@@ -18,7 +18,6 @@ module Paperclip
       class ValidateAttachmentSizeMatcher
         def initialize attachment_name
           @attachment_name = attachment_name
-          @low, @high = 0, (1.0/0)
         end
 
         def less_than size
@@ -46,9 +45,10 @@ module Paperclip
           "Attachment #{@attachment_name} must be between #{@low} and #{@high} bytes"
         end
 
-        def negative_failure_message
+        def failure_message_when_negated
           "Attachment #{@attachment_name} cannot be between #{@low} and #{@high} bytes"
         end
+        alias negative_failure_message failure_message_when_negated
 
         def description
           "validate the size of attachment #{@attachment_name}"
@@ -67,27 +67,28 @@ module Paperclip
           override_method(file, :size){ new_size }
           override_method(file, :to_tempfile){ file }
 
+          @subject.send(@attachment_name).post_processing = false
           @subject.send(@attachment_name).assign(file)
           @subject.valid?
           @subject.errors[:"#{@attachment_name}_file_size"].blank?
+        ensure
+          @subject.send(@attachment_name).post_processing = true
         end
 
         def lower_than_low?
-          not passes_validation_with_size(@low - 1)
+          @low.nil? || !passes_validation_with_size(@low - 1)
         end
 
         def higher_than_low?
-          passes_validation_with_size(@low + 1)
+          @low.nil? || passes_validation_with_size(@low + 1)
         end
 
         def lower_than_high?
-          return true if @high == (1.0/0)
-          passes_validation_with_size(@high - 1)
+          @high.nil? || @high == Float::INFINITY || passes_validation_with_size(@high - 1)
         end
 
         def higher_than_high?
-          return true if @high == (1.0/0)
-          not passes_validation_with_size(@high + 1)
+          @high.nil? || @high == Float::INFINITY || !passes_validation_with_size(@high + 1)
         end
       end
     end

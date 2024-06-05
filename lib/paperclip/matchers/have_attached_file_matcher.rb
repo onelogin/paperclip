@@ -20,16 +20,17 @@ module Paperclip
         def matches? subject
           @subject = subject
           @subject = @subject.class unless Class === @subject
-          responds? && has_column? && included?
+          responds? && has_column?
         end
 
         def failure_message
           "Should have an attachment named #{@attachment_name}"
         end
 
-        def negative_failure_message
+        def failure_message_when_negated
           "Should not have an attachment named #{@attachment_name}"
         end
+        alias negative_failure_message failure_message_when_negated
 
         def description
           "have an attachment named #{@attachment_name}"
@@ -46,10 +47,6 @@ module Paperclip
 
         def has_column?
           @subject.column_names.include?("#{@attachment_name}_file_name")
-        end
-
-        def included?
-          @subject.ancestors.include?(Paperclip::InstanceMethods)
         end
       end
     end
