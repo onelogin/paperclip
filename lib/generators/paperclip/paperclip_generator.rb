@@ -13,13 +13,13 @@ class PaperclipGenerator < ActiveRecord::Generators::Base
   end
 
   def generate_migration
-    migration_template "paperclip_migration.rb.erb", "db/migrate/#{migration_file_name}"
+    migration_template("paperclip_migration.rb.erb",
+                       "db/migrate/#{migration_file_name}",
+                       migration_version: migration_version)
   end
 
-  protected
-
   def migration_name
-    "add_attachment_#{attachment_names.join("_")}_to_#{name.underscore}"
+    "add_attachment_#{attachment_names.join("_")}_to_#{name.underscore.pluralize}"
   end
 
   def migration_file_name
@@ -30,4 +30,9 @@ class PaperclipGenerator < ActiveRecord::Generators::Base
     migration_name.camelize
   end
 
+  def migration_version
+    if Rails.version.start_with? "5"
+      "[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]"
+    end
+  end
 end

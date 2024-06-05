@@ -26,9 +26,10 @@ module Paperclip
           "Attachment #{@attachment_name} should be required"
         end
 
-        def negative_failure_message
+        def failure_message_when_negated
           "Attachment #{@attachment_name} should not be required"
         end
+        alias negative_failure_message failure_message_when_negated
 
         def description
           "require presence of attachment #{@attachment_name}"
@@ -39,14 +40,18 @@ module Paperclip
         def error_when_not_valid?
           @subject.send(@attachment_name).assign(nil)
           @subject.valid?
-          not @subject.errors[:"#{@attachment_name}_file_name"].blank?
+          @subject.errors[:"#{@attachment_name}"].present?
         end
 
         def no_error_when_valid?
           @file = StringIO.new(".")
           @subject.send(@attachment_name).assign(@file)
           @subject.valid?
-          @subject.errors[:"#{@attachment_name}_file_name"].blank?
+          expected_message = [
+            @attachment_name.to_s.titleize,
+            I18n.t(:blank, scope: [:errors, :messages])
+          ].join(' ')
+          @subject.errors.full_messages.exclude?(expected_message)
         end
       end
     end

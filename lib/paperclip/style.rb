@@ -1,4 +1,3 @@
-# encoding: utf-8
 module Paperclip
   # The Style class holds the definition of a thumbnail style,  applying
   # whatever processing is required to normalize the definition and delaying
@@ -29,7 +28,7 @@ module Paperclip
         @geometry, @format = [definition, nil].flatten[0..1]
         @other_args = {}
       end
-      @format  = nil if @format.blank?
+      @format = default_format if @format.blank?
     end
 
     # retrieves from the attachment the processors defined in the has_attached_file call
@@ -52,12 +51,12 @@ module Paperclip
     end
 
     def convert_options
-      @convert_options.respond_to?(:call) ? @convert_options.call(attachment.instance) : 
+      @convert_options.respond_to?(:call) ? @convert_options.call(attachment.instance) :
         (@convert_options || attachment.send(:extra_options_for, name))
     end
 
     def source_file_options
-      @source_file_options.respond_to?(:call) ? @source_file_options.call(attachment.instance) : 
+      @source_file_options.respond_to?(:call) ? @source_file_options.call(attachment.instance) :
         (@source_file_options || attachment.send(:extra_source_file_options_for, name))
     end
 
@@ -71,7 +70,7 @@ module Paperclip
     # Arguments other than the standard geometry, format etc are just passed through from
     # initialization and any procs are called here, just before post-processing.
     def processor_options
-      args = {}
+      args = {:style => name}
       @other_args.each do |k,v|
         args[k] = v.respond_to?(:call) ? v.call(attachment) : v
       end
@@ -97,6 +96,12 @@ module Paperclip
       else
         @other_args[key] = value
       end
+    end
+
+    # defaults to default format (nil by default)
+    def default_format
+      base = attachment.options[:default_format]
+      base.respond_to?(:call) ? base.call(attachment, name) : base
     end
 
   end

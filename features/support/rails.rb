@@ -6,7 +6,8 @@ ORIGINAL_BUNDLE_VARS = Hash[ENV.select{ |key,value| BUNDLE_ENV_VARS.include?(key
 ENV['RAILS_ENV'] = 'test'
 
 Before do
-  ENV['BUNDLE_GEMFILE'] = File.join(Dir.pwd, ENV['BUNDLE_GEMFILE']) unless ENV['BUNDLE_GEMFILE'].start_with?(Dir.pwd)
+  gemfile = ENV['BUNDLE_GEMFILE'].to_s
+  ENV['BUNDLE_GEMFILE'] = File.join(Dir.pwd, gemfile) unless gemfile.start_with?(Dir.pwd)
   @framework_version = nil
 end
 
@@ -31,16 +32,8 @@ module RailsCommandHelpers
     @framework_version ||= `rails -v`[/^Rails (.+)$/, 1]
   end
 
-  def new_application_command
-    framework_version?("3") ? "rails new" : "rails"
-  end
-
-  def generator_command
-    framework_version?("3") ? "script/rails generate" : "script/generate"
-  end
-
-  def runner_command
-    framework_version?("3") ? "script/rails runner" : "script/runner"
+  def framework_major_version
+    framework_version.split(".").first.to_i
   end
 end
 World(RailsCommandHelpers)
