@@ -3,8 +3,8 @@ module Paperclip
     # Amazon's S3 file hosting service is a scalable, easy place to store files for
     # distribution. You can find out more about it at http://aws.amazon.com/s3
     #
-    # To use Paperclip with S3, include the +aws-sdk+ gem in your Gemfile:
-    #   gem 'aws-sdk'
+    # To use Paperclip with S3, include the +aws-sdk+ gem (v2+) in your Gemfile:
+    #   gem 'aws-sdk', '~> 2.0'
     # There are a few S3-specific options for has_attached_file:
     # * +s3_credentials+: Takes a path, a File, or a Hash. The path (or File) must point
     #   to a YAML file containing the +access_key_id+ and +secret_access_key+ that Amazon
@@ -88,7 +88,7 @@ module Paperclip
         rescue LoadError => e
           e.message << " (You may need to install the aws-sdk gem)"
           raise e
-        end unless defined?(AWS::Core)
+        end unless defined?(Aws::S3)
 
         base.instance_eval do
           @s3_options     = @options[:s3_options]     || {}
@@ -140,8 +140,14 @@ module Paperclip
       end
 
       def expiring_url(time = 3600, style_name = default_style)
-        if path
-          s3_object(style_name).url_for(:read, :expires => time, :secure => use_secure_protocol?(style_name)).to_s
+        if path(style_name)
+          presigner = Aws::S3::Presigner.new(:client => s3_interface.client)
+          presigner.presigned_url(
+            :get_object,
+            :bucket     => bucket_name,
+            :key        => path(style_name).sub(%r{^/}, ''),
+            :expires_in => time
+          )
         end
       end
 
@@ -167,10 +173,18 @@ module Paperclip
 
       def s3_interface
         @s3_interface ||= begin
-          config = { :s3_endpoint => s3_host_name }
+          config = {}
+          config[:region] = s3_credentials[:region] || ENV['AWS_REGION'] || 'us-east-1'
+
+          # Use_ssl is implied by the endpoint URI scheme. Build a custom endpoint
+          # only when not using the default AWS S3 host (e.g. MinIO in development).
+          host = s3_host_name
+          unless host == 's3.amazonaws.com'
+            use_ssl = !@s3_options.key?(:use_ssl) || @s3_options[:use_ssl]
+            config[:endpoint] = "#{use_ssl ? 'https' : 'http'}://#{host}"
+          end
 
           if using_http_proxy?
-
             proxy_opts = { :host => http_proxy_host }
             proxy_opts[:port] = http_proxy_port if http_proxy_port
             if http_proxy_user
@@ -185,16 +199,18 @@ module Paperclip
             config[opt] = s3_credentials[opt] if s3_credentials[opt]
           end
 
-          AWS::S3.new(config.merge(@s3_options))
+          config.merge!(translate_s3_options(@s3_options))
+
+          Aws::S3::Resource.new(config)
         end
       end
 
       def s3_bucket
-        @s3_bucket ||= s3_interface.buckets[bucket_name]
+        @s3_bucket ||= s3_interface.bucket(bucket_name)
       end
 
       def s3_object style_name = default_style
-        s3_bucket.objects[path(style_name).sub(%r{^/},'')]
+        s3_bucket.object(path(style_name).sub(%r{^/},''))
       end
 
       def using_http_proxy?
@@ -238,9 +254,7 @@ module Paperclip
         else
           false
         end
-      rescue AWS::Errors::Base => e
-        false
-      end
+      rescue Aws::Errors::ServiceError
 
       def s3_permissions(style = default_style)
         s3_permissions = @s3_permissions[style] || @s3_permissions[:default]
@@ -268,13 +282,13 @@ module Paperclip
         basename = File.basename(filename, extname)
         file = Tempfile.new([basename, extname])
         file.binmode
-        file.write(s3_object(style).read)
+        file.write(s3_object(style).get.body.read)
         file.rewind
         return file
       end
 
       def create_bucket
-        s3_interface.buckets.create(bucket_name)
+        s3_interface.create_bucket(:bucket => bucket_name)
       end
 
       def flush_writes #:nodoc:
@@ -283,7 +297,11 @@ module Paperclip
             log("saving #{path(style)}")
             acl = @s3_permissions[style] || @s3_permissions[:default]
             acl = acl.call(self, style) if acl.respond_to?(:call)
+            # SDK v2 expects ACL as a hyphenated string (e.g. "public-read"),
+            # whereas v1 used underscore symbols (e.g. :public_read).
+            acl = acl.to_s.tr('_', '-')
             write_options = {
+              :body         => file,
               :content_type => file.content_type.to_s.strip,
               :acl => acl
             }
@@ -292,8 +310,8 @@ module Paperclip
               write_options[:server_side_encryption] = @s3_server_side_encryption
             end
             write_options.merge!(@s3_headers)
-            s3_object(style).write(file, write_options)
-          rescue AWS::S3::Errors::NoSuchBucket => e
+            s3_object(style).put(write_options)
+          rescue Aws::S3::Errors::NoSuchBucket
             create_bucket
             retry
           end
@@ -308,8 +326,8 @@ module Paperclip
         @queued_for_delete.each do |path|
           begin
             log("deleting #{path}")
-            s3_bucket.objects[path.sub(%r{^/},'')].delete
-          rescue AWS::Errors::Base => e
+            s3_bucket.object(path.sub(%r{^/},'')).delete
+          rescue Aws::Errors::ServiceError
             # Ignore this.
           end
         end
@@ -330,18 +348,21 @@ module Paperclip
       end
       private :find_credentials
 
-      def establish_connection!
-        @connection ||= AWS::S3::Base.establish_connection!( @s3_options.merge(
-          :access_key_id => s3_credentials[:access_key_id],
-          :secret_access_key => s3_credentials[:secret_access_key]
-        ))
+      # Translate legacy aws-sdk v1 s3_options keys to their v2 equivalents.
+      # Unknown keys are passed through so callers don't lose custom options.
+      def translate_s3_options(opts)
+        return opts if opts.empty?
+        translated = opts.dup
+        # v1: :s3_force_path_style  =>  v2: :force_path_style
+        if translated.key?(:s3_force_path_style)
+          translated[:force_path_style] = translated.delete(:s3_force_path_style)
+        end
+        # v1: :use_ssl is handled via the endpoint URI scheme; drop it here
+        # so it is not passed as an unknown option to Aws::S3::Resource.new.
+        translated.delete(:use_ssl)
+        translated
       end
-      private :establish_connection!
-
-      def use_secure_protocol?(style_name)
-        s3_protocol(style_name) == "https"
-      end
-      private :use_secure_protocol?
+      private :translate_s3_options
     end
   end
 end
