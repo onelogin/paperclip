@@ -203,7 +203,7 @@ module Paperclip
               userinfo += ":#{http_proxy_password}" if http_proxy_password
               proxy_opts[:userinfo] = userinfo
             end
-            config[:proxy_uri] = URI::HTTP.build(proxy_opts)
+            config[:http_proxy] = URI::HTTP.build(proxy_opts).to_s
           end
 
           [:access_key_id, :secret_access_key].each do |opt|
