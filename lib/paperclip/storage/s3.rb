@@ -413,7 +413,7 @@ module Paperclip
       private :infer_region_from_host
 
       def aws_region_token?(token)
-        token.match?(/\A[a-z]{2}(?:-[a-z]+)+-\d+\z/)
+        !!(token =~ /\A[a-z]{2}(?:-[a-z]+)+-\d+\z/)
       end
       private :aws_region_token?
     end
