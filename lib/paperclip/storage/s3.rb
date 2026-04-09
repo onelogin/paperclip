@@ -255,6 +255,8 @@ module Paperclip
           false
         end
       rescue Aws::Errors::ServiceError
+        false
+      end
 
       def s3_permissions(style = default_style)
         s3_permissions = @s3_permissions[style] || @s3_permissions[:default]
