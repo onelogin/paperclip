@@ -323,6 +323,10 @@ module Paperclip
               write_options[:server_side_encryption] = @s3_server_side_encryption
             end
             write_options.merge!(@s3_headers)
+            # SDK v2 expects enum values as uppercase strings
+            # (e.g. "REDUCED_REDUNDANCY" not :reduced_redundancy, "AES256" not :aes256)
+            write_options[:storage_class] = write_options[:storage_class].to_s.upcase if write_options[:storage_class]
+            write_options[:server_side_encryption] = write_options[:server_side_encryption].to_s.upcase if write_options[:server_side_encryption]
             s3_object(style).put(write_options)
           rescue Aws::S3::Errors::NoSuchBucket
             create_bucket

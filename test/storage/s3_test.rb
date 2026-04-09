@@ -367,7 +367,7 @@ class S3Test < Test::Unit::TestCase
         :bucket     => "prod_bucket",
         :key        => "avatars/stringio.txt",
         :expires_in => 3600
-      )
+      ).returns("https://prod_bucket.s3.amazonaws.com/avatars/stringio.txt?X-Amz-Expires=3600")
 
       @dummy.avatar.expiring_url
     end
@@ -403,7 +403,7 @@ class S3Test < Test::Unit::TestCase
         :bucket     => "prod_bucket",
         :key        => "avatars/thumb/stringio.txt",
         :expires_in => 1800
-      )
+      ).returns("https://prod_bucket.s3.amazonaws.com/avatars/thumb/stringio.txt?X-Amz-Expires=1800")
       @dummy.avatar.expiring_url(1800, :thumb)
     end
 
@@ -415,7 +415,7 @@ class S3Test < Test::Unit::TestCase
         :bucket     => "prod_bucket",
         :key        => "avatars/original/stringio.txt",
         :expires_in => 1800
-      )
+      ).returns("https://prod_bucket.s3.amazonaws.com/avatars/original/stringio.txt?X-Amz-Expires=1800")
       @dummy.avatar.expiring_url(1800)
     end
   end
@@ -742,7 +742,7 @@ class S3Test < Test::Unit::TestCase
                                       :body => anything,
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :storage_class => "reduced_redundancy")
+                                      :storage_class => "REDUCED_REDUNDANCY")
           @dummy.save
         end
 
@@ -782,7 +782,7 @@ class S3Test < Test::Unit::TestCase
                                       :body => anything,
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :server_side_encryption => :aes256)
+                                      :server_side_encryption => "AES256")
           @dummy.save
         end
 
@@ -822,7 +822,7 @@ class S3Test < Test::Unit::TestCase
                                       :body => anything,
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :storage_class => :reduced_redundancy)
+                                      :storage_class => "REDUCED_REDUNDANCY")
           @dummy.save
         end
 
