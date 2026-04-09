@@ -142,12 +142,13 @@ module Paperclip
       def expiring_url(time = 3600, style_name = default_style)
         if path(style_name)
           presigner = Aws::S3::Presigner.new(:client => s3_interface.client)
-          presigner.presigned_url(
+          url = presigner.presigned_url(
             :get_object,
             :bucket     => bucket_name,
             :key        => path(style_name).sub(%r{^/}, ''),
             :expires_in => time
           )
+          apply_s3_protocol_to_url(url, style_name)
         end
       end
 
@@ -181,7 +182,15 @@ module Paperclip
           # AWS regional hostnames (s3-<region>.amazonaws.com) should not be set as
           # a custom endpoint — the SDK resolves them from :region automatically.
           host = s3_host_name
-          unless host =~ /\.amazonaws\.com\z/i
+          if host =~ /\.amazonaws\.com\z/i
+            # Infer region from the hostname when no explicit region was provided,
+            # so that s3_host_name like "s3-ap-northeast-1.amazonaws.com" routes
+            # to the correct region instead of falling back to us-east-1.
+            if !s3_credentials[:region] && !ENV['AWS_REGION']
+              inferred = infer_region_from_host(host)
+              config[:region] = inferred if inferred
+            end
+          else
             use_ssl = !@s3_options.key?(:use_ssl) || @s3_options[:use_ssl]
             config[:endpoint] = "#{use_ssl ? 'https' : 'http'}://#{host}"
           end
@@ -361,12 +370,42 @@ module Paperclip
         if translated.key?(:s3_force_path_style)
           translated[:force_path_style] = translated.delete(:s3_force_path_style)
         end
+        # v1: :s3_endpoint  =>  v2: :endpoint
+        if translated.key?(:s3_endpoint)
+          translated[:endpoint] = translated.delete(:s3_endpoint)
+        end
         # v1: :use_ssl is handled via the endpoint URI scheme; drop it here
         # so it is not passed as an unknown option to Aws::S3::Resource.new.
         translated.delete(:use_ssl)
         translated
       end
       private :translate_s3_options
+
+      # Replace the scheme of a presigned URL to match s3_protocol, preserving
+      # backward-compatible http/https behavior for expiring_url.
+      def apply_s3_protocol_to_url(url, style_name)
+        protocol = s3_protocol(style_name).to_s.sub(%r{://\z}, '')
+        if protocol == 'http' || protocol == 'https'
+          url.sub(%r{\Ahttps?://}, "#{protocol}://")
+        else
+          url
+        end
+      end
+      private :apply_s3_protocol_to_url
+
+      # Extract region from an AWS S3 hostname.
+      # Supports "s3-<region>.amazonaws.com" and "s3.<region>.amazonaws.com".
+      # Returns nil for "s3.amazonaws.com" (the us-east-1 default).
+      def infer_region_from_host(host)
+        case host
+        when /\As3[.-]([^.]+)\.amazonaws\.com\z/i
+          region = $1
+          region == 'amazonaws' ? nil : region
+        else
+          nil
+        end
+      end
+      private :infer_region_from_host
     end
   end
 end
