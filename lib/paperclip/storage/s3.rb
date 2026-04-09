@@ -395,17 +395,23 @@ module Paperclip
 
       # Extract region from an AWS S3 hostname.
       # Supports "s3-<region>.amazonaws.com" and "s3.<region>.amazonaws.com".
-      # Returns nil for "s3.amazonaws.com" (the us-east-1 default).
+      # Returns nil for "s3.amazonaws.com" (the us-east-1 default) and
+      # any hostname token that is not a valid AWS region identifier.
       def infer_region_from_host(host)
         case host
         when /\As3[.-]([^.]+)\.amazonaws\.com\z/i
-          region = $1
-          region == 'amazonaws' ? nil : region
+          region = $1.downcase
+          aws_region_token?(region) ? region : nil
         else
           nil
         end
       end
       private :infer_region_from_host
+
+      def aws_region_token?(token)
+        token.match?(/\A[a-z]{2}(?:-[a-z]+)+-\d+\z/)
+      end
+      private :aws_region_token?
     end
   end
 end
