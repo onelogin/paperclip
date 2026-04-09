@@ -172,7 +172,7 @@ class S3Test < Test::Unit::TestCase
     end
 
     should "use the S3 bucket with the correct host name" do
-      assert_equal "s3-ap-northeast-1.amazonaws.com", @dummy.avatar.s3_bucket.config.s3_endpoint
+      assert_equal "s3-ap-northeast-1.amazonaws.com", @dummy.avatar.s3_host_name
     end
   end
 
@@ -457,19 +457,16 @@ class S3Test < Test::Unit::TestCase
     should "get the right s3_host_name in production" do
       rails_env("production")
       assert_match %r{^s3-world-end.amazonaws.com}, @dummy.avatar.s3_host_name
-      assert_match %r{^s3-world-end.amazonaws.com}, @dummy.avatar.s3_bucket.config.s3_endpoint
     end
 
     should "get the right s3_host_name in development" do
       rails_env("development")
       assert_match %r{^s3-ap-northeast-1.amazonaws.com}, @dummy.avatar.s3_host_name
-      assert_match %r{^s3-ap-northeast-1.amazonaws.com}, @dummy.avatar.s3_bucket.config.s3_endpoint
     end
 
     should "get the right s3_host_name if the key does not exist" do
       rails_env("test")
       assert_match %r{^s3.amazonaws.com}, @dummy.avatar.s3_host_name
-      assert_match %r{^s3.amazonaws.com}, @dummy.avatar.s3_bucket.config.s3_endpoint
     end
   end
 
@@ -511,9 +508,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read)
+                                      :acl => "public-read")
           @dummy.save
         end
 
@@ -620,9 +618,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read,
+                                      :acl => "public-read",
                                       :cache_control => 'max-age=31557600')
           @dummy.save
         end
@@ -659,9 +658,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read,
+                                      :acl => "public-read",
                                       :metadata => { "color" => "red" })
           @dummy.save
         end
@@ -698,9 +698,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read,
+                                      :acl => "public-read",
                                       :metadata => { "color" => "red" })
           @dummy.save
         end
@@ -737,9 +738,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read,
+                                      :acl => "public-read",
                                       :storage_class => "reduced_redundancy")
           @dummy.save
         end
@@ -776,9 +778,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read,
+                                      :acl => "public-read",
                                       :server_side_encryption => :aes256)
           @dummy.save
         end
@@ -815,9 +818,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:write).with(anything,
+          object.expects(:put).with(
+                                      :body => anything,
                                       :content_type => "image/png",
-                                      :acl => :public_read,
+                                      :acl => "public-read",
                                       :storage_class => :reduced_redundancy)
           @dummy.save
         end
@@ -846,8 +850,8 @@ class S3Test < Test::Unit::TestCase
 
     should "parse the credentials" do
       assert_equal 'pathname_bucket', @dummy.avatar.bucket_name
-      assert_equal 'pathname_key', @dummy.avatar.s3_bucket.config.access_key_id
-      assert_equal 'pathname_secret', @dummy.avatar.s3_bucket.config.secret_access_key
+      assert_equal 'pathname_key', @dummy.avatar.s3_credentials[:access_key_id]
+      assert_equal 'pathname_secret', @dummy.avatar.s3_credentials[:secret_access_key]
     end
   end
 
@@ -869,8 +873,8 @@ class S3Test < Test::Unit::TestCase
 
     should "run the file through ERB" do
       assert_equal 'env_bucket', @dummy.avatar.bucket_name
-      assert_equal 'env_key', @dummy.avatar.s3_bucket.config.access_key_id
-      assert_equal 'env_secret', @dummy.avatar.s3_bucket.config.secret_access_key
+      assert_equal 'env_key', @dummy.avatar.s3_credentials[:access_key_id]
+      assert_equal 'env_secret', @dummy.avatar.s3_credentials[:secret_access_key]
     end
   end
 
@@ -1085,9 +1089,10 @@ class S3Test < Test::Unit::TestCase
           [:thumb, :original].each do |style|
             object = stub
             @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-            object.expects(:write).with(anything,
+            object.expects(:put).with(
+                                        :body => anything,
                                         :content_type => "image/png",
-                                        :acl => :public_read,
+                                        :acl => "public-read",
                                         :content_disposition => 'attachment; filename="Custom Avatar Name.png"')
           end
           @dummy.save

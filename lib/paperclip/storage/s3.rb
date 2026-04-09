@@ -97,7 +97,7 @@ module Paperclip
             Proc.new do |style, attachment|
               permission  = (@s3_permissions[style.to_sym] || @s3_permissions[:default])
               permission  = permission.call(attachment, style) if permission.is_a?(Proc)
-              (permission == :public_read) ? 'http' : 'https'
+              (permission.to_s.tr('_', '-') == 'public-read') ? 'http' : 'https'
             end
           @s3_metadata = @options[:s3_metadata] || {}
           @s3_headers = @options[:s3_headers] || {}
@@ -177,9 +177,11 @@ module Paperclip
           config[:region] = s3_credentials[:region] || ENV['AWS_REGION'] || 'us-east-1'
 
           # Use_ssl is implied by the endpoint URI scheme. Build a custom endpoint
-          # only when not using the default AWS S3 host (e.g. MinIO in development).
+          # only when the host is not an AWS S3 hostname (e.g. MinIO in development).
+          # AWS regional hostnames (s3-<region>.amazonaws.com) should not be set as
+          # a custom endpoint — the SDK resolves them from :region automatically.
           host = s3_host_name
-          unless host == 's3.amazonaws.com'
+          unless host =~ /\.amazonaws\.com\z/i
             use_ssl = !@s3_options.key?(:use_ssl) || @s3_options[:use_ssl]
             config[:endpoint] = "#{use_ssl ? 'https' : 'http'}://#{host}"
           end
