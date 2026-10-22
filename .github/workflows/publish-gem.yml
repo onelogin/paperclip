@@ -1,5 +1,5 @@
-# This workflow should be deleted once we are done publishing "historical" gems.
-name: Publish Gem (historical)
+# Publishes the gem to GitHub Packages. Run it from main after merging a version bump.
+name: Publish Gem
 
 on: [workflow_dispatch]
 
@@ -8,6 +8,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Refuse to publish from a branch other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Publish only from main. This run is on ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
 
