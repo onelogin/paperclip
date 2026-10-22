@@ -470,6 +470,73 @@ class S3Test < Test::Unit::TestCase
     end
   end
 
+  context "Resolving the S3 region when AWS_REGION is not the bucket's region" do
+    setup do
+      @aws_region = ENV['AWS_REGION']
+      ENV['AWS_REGION'] = 'eu-central-1'
+    end
+
+    teardown do
+      ENV['AWS_REGION'] = @aws_region
+    end
+
+    context "with the default host name" do
+      setup do
+        rebuild_model :storage => :s3,
+                      :bucket => "testing",
+                      :s3_credentials => {},
+                      :s3_permissions => :private,
+                      :path => ":attachment/:basename.:extension"
+        @dummy = Dummy.new
+        @dummy.avatar = StringIO.new(".")
+      end
+
+      should "use us-east-1" do
+        assert_equal "us-east-1", @dummy.avatar.s3_region
+        assert_equal "us-east-1", @dummy.avatar.s3_interface.client.config.region
+      end
+
+      should "sign expiring urls for us-east-1" do
+        url = @dummy.avatar.expiring_url
+        assert_match %r{\Ahttps://testing\.s3\.amazonaws\.com/avatars/stringio\.txt\?}, url
+        assert_match %r{X-Amz-Credential=[^&%]+%2F\d{8}%2Fus-east-1%2Fs3%2Faws4_request}, url
+      end
+    end
+
+    should "use the region in a regional host name" do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => {},
+                    :s3_host_name => "s3-ap-northeast-1.amazonaws.com"
+      assert_equal "ap-northeast-1", Dummy.new.avatar.s3_region
+    end
+
+    should "prefer the region in the credentials" do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => { :region => "eu-west-1" },
+                    :s3_host_name => "s3-ap-northeast-1.amazonaws.com"
+      assert_equal "eu-west-1", Dummy.new.avatar.s3_region
+    end
+
+    should "use AWS_REGION for a non-AWS host" do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => {},
+                    :s3_host_name => "minio:9000"
+      assert_equal "eu-central-1", Dummy.new.avatar.s3_region
+    end
+
+    should "fall back to us-east-1 when AWS_REGION is empty" do
+      ENV['AWS_REGION'] = ''
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => {},
+                    :s3_host_name => "minio:9000"
+      assert_equal "us-east-1", Dummy.new.avatar.s3_region
+    end
+  end
+
   context "An attachment with S3 storage" do
     setup do
       rebuild_model :storage => :s3,

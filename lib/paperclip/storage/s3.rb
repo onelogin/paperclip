@@ -72,6 +72,8 @@ module Paperclip
     #   S3 (strictly speaking) does not support directories, you can still use a / to
     #   separate parts of your file name.
     # * +s3_host_name+: If you are using your bucket in Tokyo region etc, write host_name.
+    #   Requests and expiring URLs are signed for the +region+ in +s3_credentials+, else
+    #   the region in this host name (s3.amazonaws.com is us-east-1), else ENV['AWS_REGION'].
     # * +s3_metadata+: These key/value pairs will be stored with the
     #   object.  This option works by prefixing each key with
     #   "x-amz-meta-" before sending it as a header on the object
@@ -160,6 +162,16 @@ module Paperclip
         @options[:s3_host_name] || s3_credentials[:s3_host_name] || "s3.amazonaws.com"
       end
 
+      # ENV['AWS_REGION'] is the last resort: it names the region this process runs
+      # in, which need not be the bucket's, and S3 rejects presigned URLs signed for
+      # any region other than the bucket's.
+      def s3_region
+        region = s3_credentials[:region]
+        region = infer_region_from_host(s3_host_name) if region.blank?
+        region = ENV['AWS_REGION'] if region.blank?
+        region.blank? ? 'us-east-1' : region
+      end
+
       def s3_host_alias
         @s3_host_alias = @options[:s3_host_alias]
         @s3_host_alias = @s3_host_alias.call(self) if @s3_host_alias.is_a?(Proc)
@@ -174,23 +186,14 @@ module Paperclip
 
       def s3_interface
         @s3_interface ||= begin
-          config = {}
-          config[:region] = s3_credentials[:region] || ENV['AWS_REGION'] || 'us-east-1'
+          config = { :region => s3_region }
 
           # Use_ssl is implied by the endpoint URI scheme. Build a custom endpoint
           # only when the host is not an AWS S3 hostname (e.g. MinIO in development).
-          # AWS regional hostnames (s3-<region>.amazonaws.com) should not be set as
-          # a custom endpoint — the SDK resolves them from :region automatically.
+          # AWS hostnames are not set as a custom endpoint — the SDK resolves them
+          # from :region.
           host = s3_host_name
-          if host =~ /\.amazonaws\.com\z/i
-            # Infer region from the hostname when no explicit region was provided,
-            # so that s3_host_name like "s3-ap-northeast-1.amazonaws.com" routes
-            # to the correct region instead of falling back to us-east-1.
-            if !s3_credentials[:region] && !ENV['AWS_REGION']
-              inferred = infer_region_from_host(host)
-              config[:region] = inferred if inferred
-            end
-          else
+          unless host =~ /\.amazonaws\.com\z/i
             use_ssl = !@s3_options.key?(:use_ssl) || @s3_options[:use_ssl]
             config[:endpoint] = "#{use_ssl ? 'https' : 'http'}://#{host}"
           end
@@ -398,11 +401,13 @@ module Paperclip
       private :apply_s3_protocol_to_url
 
       # Extract region from an AWS S3 hostname.
-      # Supports "s3-<region>.amazonaws.com" and "s3.<region>.amazonaws.com".
-      # Returns nil for "s3.amazonaws.com" (the us-east-1 default) and
-      # any hostname token that is not a valid AWS region identifier.
+      # Supports "s3-<region>.amazonaws.com" and "s3.<region>.amazonaws.com";
+      # the global "s3.amazonaws.com" endpoint is us-east-1.
+      # Returns nil for any hostname token that is not a valid AWS region identifier.
       def infer_region_from_host(host)
         case host
+        when /\As3\.amazonaws\.com\z/i
+          'us-east-1'
         when /\As3[.-]([^.]+)\.amazonaws\.com\z/i
           region = $1.downcase
           aws_region_token?(region) ? region : nil
