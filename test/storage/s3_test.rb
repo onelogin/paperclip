@@ -8,6 +8,13 @@ class S3Test < Test::Unit::TestCase
     end
   end
 
+  # Matches the options flush_writes passes to Aws::S3::Object#put: the queued file
+  # as :body, and exactly +expected+ otherwise. A literal hash can't hold `anything`
+  # for :body, because mocha compares hash values with ==.
+  def put_options(expected)
+    lambda { |options| options.key?(:body) && options.reject { |key, _| key == :body } == expected }
+  end
+
   def setup
     Aws.config.update(:access_key_id => "TESTKEY", :secret_access_key => "TESTSECRET", :stub_responses => true)
   end
@@ -470,6 +477,73 @@ class S3Test < Test::Unit::TestCase
     end
   end
 
+  context "Resolving the S3 region when AWS_REGION is not the bucket's region" do
+    setup do
+      @aws_region = ENV['AWS_REGION']
+      ENV['AWS_REGION'] = 'eu-central-1'
+    end
+
+    teardown do
+      ENV['AWS_REGION'] = @aws_region
+    end
+
+    context "with the default host name" do
+      setup do
+        rebuild_model :storage => :s3,
+                      :bucket => "testing",
+                      :s3_credentials => {},
+                      :s3_permissions => :private,
+                      :path => ":attachment/:basename.:extension"
+        @dummy = Dummy.new
+        @dummy.avatar = StringIO.new(".")
+      end
+
+      should "use us-east-1" do
+        assert_equal "us-east-1", @dummy.avatar.s3_region
+        assert_equal "us-east-1", @dummy.avatar.s3_interface.client.config.region
+      end
+
+      should "sign expiring urls for us-east-1" do
+        url = @dummy.avatar.expiring_url
+        assert_match %r{\Ahttps://testing\.s3\.amazonaws\.com/avatars/stringio\.txt\?}, url
+        assert_match %r{X-Amz-Credential=[^&%]+%2F\d{8}%2Fus-east-1%2Fs3%2Faws4_request}, url
+      end
+    end
+
+    should "use the region in a regional host name" do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => {},
+                    :s3_host_name => "s3-ap-northeast-1.amazonaws.com"
+      assert_equal "ap-northeast-1", Dummy.new.avatar.s3_region
+    end
+
+    should "prefer the region in the credentials" do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => { :region => "eu-west-1" },
+                    :s3_host_name => "s3-ap-northeast-1.amazonaws.com"
+      assert_equal "eu-west-1", Dummy.new.avatar.s3_region
+    end
+
+    should "use AWS_REGION for a non-AWS host" do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => {},
+                    :s3_host_name => "minio:9000"
+      assert_equal "eu-central-1", Dummy.new.avatar.s3_region
+    end
+
+    should "fall back to us-east-1 when AWS_REGION is empty" do
+      ENV['AWS_REGION'] = ''
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :s3_credentials => {},
+                    :s3_host_name => "minio:9000"
+      assert_equal "us-east-1", Dummy.new.avatar.s3_region
+    end
+  end
+
   context "An attachment with S3 storage" do
     setup do
       rebuild_model :storage => :s3,
@@ -508,10 +582,9 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
-                                      :acl => "public-read")
+                                      :acl => "public-read"))
           @dummy.save
         end
 
@@ -618,11 +691,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :cache_control => 'max-age=31557600')
+                                      :cache_control => 'max-age=31557600'))
           @dummy.save
         end
 
@@ -658,11 +730,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :metadata => { "color" => "red" })
+                                      :metadata => { "color" => "red" }))
           @dummy.save
         end
 
@@ -698,11 +769,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :metadata => { "color" => "red" })
+                                      :metadata => { "color" => "red" }))
           @dummy.save
         end
 
@@ -738,11 +808,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :storage_class => "REDUCED_REDUNDANCY")
+                                      :storage_class => "REDUCED_REDUNDANCY"))
           @dummy.save
         end
 
@@ -778,11 +847,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :server_side_encryption => "AES256")
+                                      :server_side_encryption => "AES256"))
           @dummy.save
         end
 
@@ -818,11 +886,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :storage_class => "REDUCED_REDUNDANCY")
+                                      :storage_class => "REDUCED_REDUNDANCY"))
           @dummy.save
         end
 
@@ -903,10 +970,9 @@ class S3Test < Test::Unit::TestCase
           setup do
             object = stub
             @dummy.avatar.stubs(:s3_object).returns(object)
-            object.expects(:put).with(
-                                        :body => anything,
+            object.expects(:put).with(&put_options(
                                         :content_type => "image/png",
-                                        :acl => "public-read")
+                                        :acl => "public-read"))
             @dummy.save
           end
 
@@ -942,10 +1008,9 @@ class S3Test < Test::Unit::TestCase
           setup do
             object = stub
             @dummy.avatar.stubs(:s3_object).returns(object)
-            object.expects(:put).with(
-                                        :body => anything,
+            object.expects(:put).with(&put_options(
                                         :content_type => "image/png",
-                                        :acl => "private")
+                                        :acl => "private"))
             @dummy.save
           end
 
@@ -988,10 +1053,9 @@ class S3Test < Test::Unit::TestCase
             [:thumb, :original].each do |style|
               object = stub
               @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-              object.expects(:put).with(
-                                          :body => anything,
+              object.expects(:put).with(&put_options(
                                           :content_type => "image/png",
-                                          :acl => style == :thumb ? "public-read" : "private")
+                                          :acl => style == :thumb ? "public-read" : "private"))
             end
             @dummy.save
           end
@@ -1037,10 +1101,9 @@ class S3Test < Test::Unit::TestCase
             [:thumb, :original].each do |style|
               object = stub
               @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-              object.expects(:put).with(
-                                          :body => anything,
+              object.expects(:put).with(&put_options(
                                           :content_type => "image/png",
-                                          :acl => style == :thumb ? "public-read" : "private")
+                                          :acl => style == :thumb ? "public-read" : "private"))
             end
             @dummy.save
           end
@@ -1089,11 +1152,10 @@ class S3Test < Test::Unit::TestCase
           [:thumb, :original].each do |style|
             object = stub
             @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-            object.expects(:put).with(
-                                        :body => anything,
+            object.expects(:put).with(&put_options(
                                         :content_type => "image/png",
                                         :acl => "public-read",
-                                        :content_disposition => 'attachment; filename="Custom Avatar Name.png"')
+                                        :content_disposition => 'attachment; filename="Custom Avatar Name.png"'))
           end
           @dummy.save
         end
