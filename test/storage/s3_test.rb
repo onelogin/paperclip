@@ -8,6 +8,13 @@ class S3Test < Test::Unit::TestCase
     end
   end
 
+  # Matches the options flush_writes passes to Aws::S3::Object#put: the queued file
+  # as :body, and exactly +expected+ otherwise. A literal hash can't hold `anything`
+  # for :body, because mocha compares hash values with ==.
+  def put_options(expected)
+    lambda { |options| options.key?(:body) && options.reject { |key, _| key == :body } == expected }
+  end
+
   def setup
     Aws.config.update(:access_key_id => "TESTKEY", :secret_access_key => "TESTSECRET", :stub_responses => true)
   end
@@ -575,10 +582,9 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
-                                      :acl => "public-read")
+                                      :acl => "public-read"))
           @dummy.save
         end
 
@@ -685,11 +691,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :cache_control => 'max-age=31557600')
+                                      :cache_control => 'max-age=31557600'))
           @dummy.save
         end
 
@@ -725,11 +730,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :metadata => { "color" => "red" })
+                                      :metadata => { "color" => "red" }))
           @dummy.save
         end
 
@@ -765,11 +769,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :metadata => { "color" => "red" })
+                                      :metadata => { "color" => "red" }))
           @dummy.save
         end
 
@@ -805,11 +808,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :storage_class => "REDUCED_REDUNDANCY")
+                                      :storage_class => "REDUCED_REDUNDANCY"))
           @dummy.save
         end
 
@@ -845,11 +847,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :server_side_encryption => "AES256")
+                                      :server_side_encryption => "AES256"))
           @dummy.save
         end
 
@@ -885,11 +886,10 @@ class S3Test < Test::Unit::TestCase
         setup do
           object = stub
           @dummy.avatar.stubs(:s3_object).returns(object)
-          object.expects(:put).with(
-                                      :body => anything,
+          object.expects(:put).with(&put_options(
                                       :content_type => "image/png",
                                       :acl => "public-read",
-                                      :storage_class => "REDUCED_REDUNDANCY")
+                                      :storage_class => "REDUCED_REDUNDANCY"))
           @dummy.save
         end
 
@@ -970,10 +970,9 @@ class S3Test < Test::Unit::TestCase
           setup do
             object = stub
             @dummy.avatar.stubs(:s3_object).returns(object)
-            object.expects(:put).with(
-                                        :body => anything,
+            object.expects(:put).with(&put_options(
                                         :content_type => "image/png",
-                                        :acl => "public-read")
+                                        :acl => "public-read"))
             @dummy.save
           end
 
@@ -1009,10 +1008,9 @@ class S3Test < Test::Unit::TestCase
           setup do
             object = stub
             @dummy.avatar.stubs(:s3_object).returns(object)
-            object.expects(:put).with(
-                                        :body => anything,
+            object.expects(:put).with(&put_options(
                                         :content_type => "image/png",
-                                        :acl => "private")
+                                        :acl => "private"))
             @dummy.save
           end
 
@@ -1055,10 +1053,9 @@ class S3Test < Test::Unit::TestCase
             [:thumb, :original].each do |style|
               object = stub
               @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-              object.expects(:put).with(
-                                          :body => anything,
+              object.expects(:put).with(&put_options(
                                           :content_type => "image/png",
-                                          :acl => style == :thumb ? "public-read" : "private")
+                                          :acl => style == :thumb ? "public-read" : "private"))
             end
             @dummy.save
           end
@@ -1104,10 +1101,9 @@ class S3Test < Test::Unit::TestCase
             [:thumb, :original].each do |style|
               object = stub
               @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-              object.expects(:put).with(
-                                          :body => anything,
+              object.expects(:put).with(&put_options(
                                           :content_type => "image/png",
-                                          :acl => style == :thumb ? "public-read" : "private")
+                                          :acl => style == :thumb ? "public-read" : "private"))
             end
             @dummy.save
           end
@@ -1156,11 +1152,10 @@ class S3Test < Test::Unit::TestCase
           [:thumb, :original].each do |style|
             object = stub
             @dummy.avatar.stubs(:s3_object).with(style).returns(object)
-            object.expects(:put).with(
-                                        :body => anything,
+            object.expects(:put).with(&put_options(
                                         :content_type => "image/png",
                                         :acl => "public-read",
-                                        :content_disposition => 'attachment; filename="Custom Avatar Name.png"')
+                                        :content_disposition => 'attachment; filename="Custom Avatar Name.png"'))
           end
           @dummy.save
         end
